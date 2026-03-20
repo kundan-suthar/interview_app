@@ -1,15 +1,21 @@
-from sqlmodel import SQLModel, Field, Relationship
-from typing import Optional, List
-from uuid import UUID
+from uuid import UUID as PyUUID
+from sqlalchemy import String, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.models.user import Base
 
-class UserProfile(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    # Link this to the ID from fastapi-users (usually a UUID)
-    user_id: UUID = Field(index=True, unique=True) 
+class UserProfile(Base):
+    __tablename__ = "user_profile"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Ensure this matches the ID type in your User model (usually UUID)
+    user_id: Mapped[PyUUID] = mapped_column(ForeignKey("user.id"), unique=True)
     
-    full_name: str
-    headline: Optional[str] = None  # e.g., "Frontend Developer"
-    bio: Optional[str] = None
-    
-    # Relationships (Optional but helpful for SQLModel)
-    interviews: List["MockInterview"] = Relationship(back_populates="profile")
+    full_name: Mapped[str | None] = mapped_column(String(255))
+    headline: Mapped[str | None] = mapped_column(String(255))
+    bio: Mapped[str | None] = mapped_column(String(1000))
+
+    # Relationships
+    # Note: "user" must be defined in your User model for back_populates to work
+    interviews: Mapped[list["MockInterview"]] = relationship(
+        "MockInterview", back_populates="profile"
+    )

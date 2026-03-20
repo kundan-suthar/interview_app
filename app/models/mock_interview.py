@@ -1,22 +1,29 @@
+import datetime as dt
 from datetime import datetime
-from sqlmodel import SQLModel, Field, Relationship
-from typing import Optional
-from .user_profile import UserProfile
+from sqlalchemy import String, ForeignKey, DateTime
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from typing import TYPE_CHECKING
+from app.models.user import Base
 
-class MockInterview(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    profile_id: int = Field(foreign_key="userprofile.id")
+if TYPE_CHECKING:
+    from app.models.user_profile import UserProfile
+
+class MockInterview(Base):
+    __tablename__ = "mock_interview"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("user_profile.id"))
     
     # Interview Data
-    resume_text: str  # Store the extracted text from the PDF here
-    job_description: str
+    resume_text: Mapped[str] = mapped_column(String)  # Store the extracted text from the PDF here
+    job_description: Mapped[str] = mapped_column(String)
     
     # Metadata
-    status: str = Field(default="pending") # e.g., "active", "completed"
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    status: Mapped[str] = mapped_column(String(50), default="pending") # e.g., "active", "completed"
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     
     # LLM Context
     # If using OpenAI/LangChain, store the thread_id to resume chats
-    thread_id: Optional[str] = None 
+    thread_id: Mapped[str | None] = mapped_column(String(255))
 
-    profile: UserProfile = Relationship(back_populates="interviews")
+    profile: Mapped["UserProfile"] = relationship("UserProfile", back_populates="interviews")
