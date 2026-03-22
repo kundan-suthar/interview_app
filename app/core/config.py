@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
+    OPENAI_API_KEY: str
+    LANGCHAIN_API_KEY: str
+    LANGCHAIN_PROJECT: str
     
     model_config = SettingsConfigDict(
         env_file=env_path,
