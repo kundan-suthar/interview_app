@@ -132,6 +132,7 @@ dependencies = [
     { name = "langchain" },
     { name = "langchain-openai" },
     { name = "psycopg2" },
+    { name = "pyjwt" },
     { name = "sqlmodel" },
 ]
 
@@ -143,6 +144,7 @@ requires-dist = [
     { name = "langchain", specifier = ">=1.2.13" },
     { name = "langchain-openai", specifier = ">=1.1.11" },
     { name = "psycopg2", specifier = ">=2.9.11" },
+    { name = "pyjwt", specifier = ">=2.12.1" },
     { name = "sqlmodel", specifier = ">=0.0.37" },
 ]
 
