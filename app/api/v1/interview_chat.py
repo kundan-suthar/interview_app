@@ -1,22 +1,45 @@
 # app/api/routes/interview.py
 
 import json
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Form
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import SystemMessage
 from app.services.interview_service import interview_agent, build_system_prompt
 from app.services.session_store import start_session, get_time_state, end_session
 # from app.services.evaluator_service import evaluate_interview
+from app.auth.users import current_active_user
+from app.models.user import User
+from app.schemas.mock_interview import InterviewSessionCreate
+import uuid
+from app.utils.extract_pdf import extract_text_from_upload
+from app.services.interview_analyze import analyze_resume_function
 
 router = APIRouter()
 
-@router.post("/interview/start")
-async def start_interview(
-    session_id: str,
-    interview_type: str = "technical",
-    duration_minutes: int = 45,
+@router.post("/api/v1/interview/analyze")
+async def analyze_resume(
+    resume: UploadFile = File(...),
+    job_description: str = Form(...),
+    current_user: User = Depends(current_active_user),
 ):
     """Call this once before the first message to register the timer."""
+    texts = await extract_text_from_upload(resume)
+    res = await analyze_resume_function({
+        "text": texts,
+        "job_description": job_description
+    })  
+    print("-----------------------")
+    print("res",res)
+    return res
+    
+@router.post("/interview/start")
+async def start_interview(
+    interview_type: str = Form(default="technical"),
+    duration_minutes: int = Form(default=5),
+    current_user: User = Depends(current_active_user),
+):
+    """Call this once before the first message to register the timer."""
+    session_id = str(uuid.uuid4())
     session = start_session(session_id, duration_minutes)
     return {
         "session_id": session_id,
