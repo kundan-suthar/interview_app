@@ -12,9 +12,9 @@ class MockInterview(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     profile_id: Mapped[int] = mapped_column(ForeignKey("user_profile.id"))
     
-    # Interview Data
-    resume_text: Mapped[str] = mapped_column(String)  # Store the extracted text from the PDF here
-    job_description: Mapped[str] = mapped_column(String)
+    # # Interview Data
+    # resume_text: Mapped[str] = mapped_column(String)  # Store the extracted text from the PDF here
+    job_description: Mapped[str] = mapped_column(String) 
     
     # Metadata
     status: Mapped[str] = mapped_column(String(50), default="pending") # e.g., "active", "completed"
@@ -25,3 +25,4 @@ class MockInterview(Base):
     thread_id: Mapped[str | None] = mapped_column(String(255))
 
     profile: Mapped["UserProfile"] = relationship("UserProfile", back_populates="interviews")
+    resume_analysis: Mapped["ProfileAnalysis"] = relationship("ProfileAnalysis", back_populates="interview")

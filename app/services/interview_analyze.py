@@ -30,7 +30,7 @@ class ProfileAnalysis(BaseModel):
             "Current job title of the candidate as mentioned in the resume. If not found, return 'Not Mentioned'."
         )
     )
-    required_Job_title: str = Field(
+    required_job_title: str = Field(
         description=(
             "Required job title of the candidate as mentioned in the job description. If not found, return 'Not Mentioned'."
         )

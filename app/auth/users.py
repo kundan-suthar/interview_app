@@ -12,7 +12,7 @@ from fastapi_users import FastAPIUsers
 bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
 
 def get_jwt_strategy():
-    return JWTStrategy(secret=settings.SECRET_KEY, lifetime_seconds=600)
+    return JWTStrategy(secret=settings.SECRET_KEY, lifetime_seconds=24*60*60)
 
 auth_backend= AuthenticationBackend(
     name="jwt", 

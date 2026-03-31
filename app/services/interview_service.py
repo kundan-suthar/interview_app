@@ -1,7 +1,8 @@
 from langchain.chat_models import init_chat_model
 from app.core.config import settings
 from langgraph.prebuilt import create_react_agent
-
+from app.services.session_store import get_profile_data
+import json
 
 # llm = init_chat_model("gpt-4o", model_provider="openai", temperature=0.7, api_key=settings.OPENAI_API_KEY,streaming=True)
 
@@ -19,9 +20,11 @@ from langchain_core.messages import SystemMessage
 from typing import Literal
 
 # ── Candidate profile (hardcoded for now, swap with DB later) ──────────────
+
+
 CANDIDATE_PROFILE = {
     "name": "Rahul Sharma",
-    "role_applied": "Senior Backend Engineer",
+    "required_job_title": "Senior Backend Engineer",
     "years_of_experience": 5,
     "skills": ["Python", "FastAPI", "PostgreSQL", "Redis", "Docker", "AWS"],
     "last_company": "Flipkart",
@@ -117,12 +120,21 @@ INTERVIEW_CONFIG: dict[InterviewType, dict] = {
 
 
 def build_system_prompt(
+    profile_data: dict | None,
     interview_type: InterviewType = "technical",
     time_state: dict | None = None,
 ) -> str:
-    config = INTERVIEW_CONFIG[interview_type]
-    profile = CANDIDATE_PROFILE
+    print(f"DEBUG profile_data type: {type(profile_data)}, value: {repr(profile_data)}")  # ← add this
+    if profile_data is None:
+        raise ValueError("Profile data is required.")
+    
+    # ✅ Handle if stored as JSON string
+    if isinstance(profile_data, str):
+        profile_data = json.loads(profile_data)
+    profile = profile_data
+    job_description = profile.get("job_description", "Not provided")
 
+    config = INTERVIEW_CONFIG[interview_type]
     if time_state is None or time_state["phase"] == "normal":
         time_instruction = (
             f"The interview is in progress. "
@@ -152,7 +164,7 @@ def build_system_prompt(
         time_instruction = "Continue the interview."
 
     return f"""
-    You are an expert interviewer conducting a **{config["label"]}** for the role of **{profile["role_applied"]}**.
+    You are an expert interviewer conducting a **{config["label"]}** for the role of **{profile["required_job_title"]}**.
 
     ## CANDIDATE PROFILE
     - **Name**: {profile["name"]}
@@ -160,6 +172,9 @@ def build_system_prompt(
     - **Skills**: {", ".join(profile["skills"])}
     - **Last Company**: {profile["last_company"]}
     - **Background**: {profile["resume_summary"]}
+
+    ## JOB DESCRIPTION
+    {job_description}
 
     ## INTERVIEW FOCUS
     {config["focus"]}
@@ -186,13 +201,13 @@ def create_interview_agent(interview_type: InterviewType = "technical"):
     llm = init_chat_model("gpt-4o", model_provider="openai", temperature=0.7, api_key=settings.OPENAI_API_KEY,streaming=True)
     memory = MemorySaver()
 
-    system_prompt = build_system_prompt(interview_type)
+    # system_prompt = build_system_prompt(interview_type)
 
     agent = create_react_agent(
         llm,
         tools=[],
         checkpointer=memory,
-        prompt=SystemMessage(content=system_prompt),
+        # prompt=SystemMessage(content=system_prompt),
     )
     return agent
 

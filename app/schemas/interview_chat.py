@@ -3,8 +3,5 @@ from uuid import UUID
 
 
 class InterviewSessionCreate(BaseModel):
-    # resume_text: str
-    job_description: str
-    # interview_type: str | None = None
-    # duration_minutes: int | None = 5
+    user_message: str
     model_config = ConfigDict(from_attributes=True)

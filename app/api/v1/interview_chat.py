@@ -5,14 +5,21 @@ from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Form
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import SystemMessage
 from app.services.interview_service import interview_agent, build_system_prompt
-from app.services.session_store import start_session, get_time_state, end_session
+from app.services.session_store import start_session, get_time_state, end_session, get_profile_data
 # from app.services.evaluator_service import evaluate_interview
 from app.auth.users import current_active_user
 from app.models.user import User
-from app.schemas.mock_interview import InterviewSessionCreate
+from app.models.user_profile import UserProfile
+from app.models.mock_interview import MockInterview
+from app.models.resume_analysis import ProfileAnalysis
+from app.schemas.resume_analysis import ResumeAnalysisCreate
 import uuid
+from datetime import datetime
 from app.utils.extract_pdf import extract_text_from_upload
 from app.services.interview_analyze import analyze_resume_function
+from app.db.database import SessionDep
+from sqlalchemy import select
+
 
 router = APIRouter()
 
@@ -32,22 +39,71 @@ async def analyze_resume(
     print("res",res)
     return res
     
-@router.post("/interview/start")
+@router.post("/api/v1/interview/start")
 async def start_interview(
-    interview_type: str = Form(default="technical"),
-    duration_minutes: int = Form(default=5),
+    # interview_type: str = Form(default="technical"),
+    # duration_minutes: int = Form(default=5),
+    db:SessionDep, 
+    request_body: ResumeAnalysisCreate,
     current_user: User = Depends(current_active_user),
 ):
     """Call this once before the first message to register the timer."""
+    # print("-----------------------")
+    # print(request_body)
+    
+    result = await db.execute(
+        select(UserProfile).where(UserProfile.user_id == current_user.id)
+    )
+
+    interview_type = "technical"
+    duration_minutes = 5
     session_id = str(uuid.uuid4())
-    session = start_session(session_id, duration_minutes)
+    profile = result.scalar_one_or_none()
+
+    profile_id = profile.id if profile else None
+    if not profile_id:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    
+    mock_interview = MockInterview(
+        profile_id=profile_id,
+        status="pending",
+        job_description=request_body.job_description,
+        created_at=datetime.utcnow(),
+        thread_id=session_id
+    )
+    db.add(mock_interview)
+    await db.commit()
+    await db.refresh(mock_interview)
+    print("mock_interview",mock_interview.id)   
+    if mock_interview.id:
+        resume_analysis = ProfileAnalysis(
+            mock_interview_id=mock_interview.id,
+            full_name=request_body.full_name,
+            experience=request_body.experience,
+            current_job_title=request_body.current_job_title,
+            required_job_title=request_body.required_job_title,
+            experience_level=request_body.experience_level,
+            skills=request_body.skills,
+            last_company=request_body.last_company,
+            education=request_body.education,
+            resume_summary=request_body.resume_summary,
+            profile_match=request_body.profile_match,
+            match_reasoning=request_body.match_reasoning,
+            matching_skills=request_body.matching_skills,
+            missing_skills=request_body.missing_skills,
+            recommendation=request_body.recommendation,
+        )
+        db.add(resume_analysis)
+        await db.commit()
+        await db.refresh(resume_analysis)
+    session = await start_session(db,mock_interview.id, session_id, duration_minutes)
     return {
         "session_id": session_id,
         "duration_minutes": duration_minutes,
         "started_at": session["start_time"],
     }
 
-@router.post("/interview/chat")
+@router.get("/api/v1/interview/chat")
 async def chat_with_interviewer(
     session_id: str,
     user_message: str,
@@ -55,14 +111,15 @@ async def chat_with_interviewer(
 ):
     # ── Get time state — reject if session not started ─────────────────
     time_state = get_time_state(session_id)
-    if time_state is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Session not found. Call /interview/start first."
-        )
+    profile_data = get_profile_data(session_id)
+    # print("DEBUG time_state:", time_state)
+    # print("DEBUG profile:", profile_data)
+
+    if not profile_data or not time_state:
+        raise HTTPException(status_code=400, detail="Session not found or profile missing. Call /start first.")
 
     config = {"configurable": {"thread_id": session_id}}
-    system_prompt = build_system_prompt(interview_type, time_state)
+    system_prompt = build_system_prompt(profile_data, interview_type, time_state)
     is_final = time_state["phase"] in ("hard_stop", "expired")
 
     async def event_generator():
