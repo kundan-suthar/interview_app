@@ -23,11 +23,20 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             secure=False,
             samesite="lax",
             max_age=60 * 60 * 24 * 7,
-            # path="/api/v1/auth",
+            path="/",
         )
 
     async def on_after_register(self, user: User, request=None):
         print(f"User {user.id} has registered.")
+
+    async def on_after_logout(self, user: User, request=None, response=None):
+        if response is None:
+            return
+        print("user logged out")
+        response.delete_cookie(
+            key="refresh_token",
+            path="/",
+        )
 
 # Dependency to get the manager
 async def get_user_manager(user_db=Depends(get_user_db)):

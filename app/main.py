@@ -6,7 +6,8 @@ from app.auth.users import fastapi_users, auth_backend
 from app.auth.schemas import UserRead, UserCreate
 from app.api.v1 import profile
 from app.api.v1 import interview_chat
-from app.auth import refresh
+from app.api.v1 import user
+from app.auth import refresh,logout
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,10 +33,10 @@ app.add_middleware(
 # Authentication routes (Login/Logout)
 app.include_router(
     fastapi_users.get_auth_router(auth_backend),
-    prefix="/api/v1/auth",
+    prefix="/auth/jwt",
     tags=["auth"],
 )
-
+app.include_router(logout.router, tags=["auth"])
 # Registration route
 # This router will automatically trigger UserManager.on_after_register
 app.include_router(
@@ -44,6 +45,6 @@ app.include_router(
     tags=["auth"],
 )
 app.include_router(refresh.router, tags=["auth"])
-
+app.include_router(user.router)
 app.include_router(profile.router, tags=["profile"])
 app.include_router(interview_chat.router, tags=["interview_chat"])
