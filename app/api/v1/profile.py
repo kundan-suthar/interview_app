@@ -9,10 +9,18 @@ from app.schemas.user_profile import UserProfileCreate, UserProfileResponse
 
 router = APIRouter(tags=['profile'])
 
-@router.get("/profile")
+@router.get("/api/v1/profile")
 async def get_profile(db:SessionDep,current_user: User = Depends(current_active_user)):
-    all_profiles =  await db.execute(select(UserProfile))
-    return all_profiles.scalars().all()
+    query = select(UserProfile.bio, UserProfile.headline, UserProfile.skills).where(UserProfile.user_id == current_user.id)
+    result = await db.execute(query)
+    data = result.first()
+    if data is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+    return {
+        "bio": data.bio,
+        "headline": data.headline,
+        "skills": data.skills,
+    }
 
 
 @router.post("/api/v1/profile", response_model=UserProfileResponse)

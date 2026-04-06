@@ -8,7 +8,6 @@ from app.models.mock_interview import MockInterview
 
 # Use asyncpg for PostgreSQL
 DATABASE_URL = f"postgresql+asyncpg://{settings.DATABASE_USERNAME}:{settings.DATABASE_PASSWORD}@{settings.DATABASE_HOSTNAME}:{settings.DATABASE_PORT}/{settings.DATABASE_NAME}"
-
 engine = create_async_engine(DATABASE_URL)
 
 async_session_maker = async_sessionmaker(engine, expire_on_commit=False)

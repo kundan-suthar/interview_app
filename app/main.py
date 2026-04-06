@@ -36,6 +36,11 @@ app.include_router(
     prefix="/auth/jwt",
     tags=["auth"],
 )
+app.include_router(
+    fastapi_users.get_verify_router(UserRead),
+    prefix="/auth",
+    tags=["auth"],
+)
 app.include_router(logout.router, tags=["auth"])
 # Registration route
 # This router will automatically trigger UserManager.on_after_register
