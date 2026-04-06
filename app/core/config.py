@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     LANGCHAIN_API_KEY: str
     LANGCHAIN_PROJECT: str
     
+    MAIL_USERNAME: str
+    MAIL_PASSWORD: str
+    MAIL_FROM: str
+    MAIL_PORT: int
+    
     model_config = SettingsConfigDict(
         env_file=env_path,
         extra="ignore"
