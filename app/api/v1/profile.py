@@ -15,11 +15,18 @@ async def get_profile(db:SessionDep,current_user: User = Depends(current_active_
     result = await db.execute(query)
     data = result.first()
     if data is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+        return {
+            "bio": "",
+            "headline": "",
+            "skills": "",
+            "isProfileCreated": False
+        }
+
     return {
         "bio": data.bio,
         "headline": data.headline,
         "skills": data.skills,
+        "isProfileCreated": True
     }
 
 

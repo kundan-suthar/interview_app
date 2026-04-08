@@ -12,5 +12,6 @@ class UserProfileResponse(BaseModel):
     headline: str | None = None   # Allow None and set default
     bio: str | None = None 
     skills: str | None = None 
+    isProfileCreated: bool
     model_config = ConfigDict(from_attributes=True)
     

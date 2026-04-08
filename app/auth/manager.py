@@ -32,7 +32,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         token: str, 
         request: Request = None,
     ):
-        verification_link = f"http://localhost:8000/auth/verify?token={token}"
+        verification_link = f"http://localhost:3000/verifyEmail?token={token}"
         
         # Send email here
         await send_verification_email(user.email, verification_link)
