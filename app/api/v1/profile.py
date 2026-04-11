@@ -45,11 +45,13 @@ async def create_or_update_profile(
         # UPDATE
         for key, value in profile_in.model_dump().items():
             setattr(profile, key, value)
+        profile.isProfileCreated = True
     else:
         # CREATE
         profile = UserProfile(
             **profile_in.model_dump(),
-            user_id=current_user.id
+            user_id=current_user.id,
+            isProfileCreated=True
         )
         db.add(profile)
 

@@ -56,7 +56,7 @@ async def start_interview(
     )
 
     interview_type = "technical"
-    duration_minutes = 5
+    duration_minutes = 60
     session_id = str(uuid.uuid4())
     profile = result.scalar_one_or_none()
 
@@ -103,11 +103,12 @@ async def start_interview(
         "started_at": session["start_time"],
     }
 
-@router.get("/api/v1/interview/chat")
+@router.post("/api/v1/interview/chat")
 async def chat_with_interviewer(
     session_id: str,
     user_message: str,
     interview_type: str = "technical",
+    current_user: User = Depends(current_active_user)
 ):
     # ── Get time state — reject if session not started ─────────────────
     time_state = get_time_state(session_id)

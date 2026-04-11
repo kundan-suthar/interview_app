@@ -8,6 +8,8 @@ from app.api.v1 import profile
 from app.api.v1 import interview_chat
 from app.api.v1 import user
 from app.auth import refresh,logout
+from app.middleware.is_profile_created import check_profile_completed
+from fastapi import Depends
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -50,6 +52,7 @@ app.include_router(
     tags=["auth"],
 )
 app.include_router(refresh.router, tags=["auth"])
-app.include_router(user.router)
+app.include_router(user.router, dependencies=[Depends(check_profile_completed)])
 app.include_router(profile.router, tags=["profile"])
+# app.include_router(interview_chat.router, tags=["interview_chat"], dependencies=[Depends(check_profile_completed)])
 app.include_router(interview_chat.router, tags=["interview_chat"])
