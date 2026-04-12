@@ -19,7 +19,8 @@ from app.utils.extract_pdf import extract_text_from_upload
 from app.services.interview_analyze import analyze_resume_function
 from app.db.database import SessionDep
 from sqlalchemy import select
-
+from groq import Groq
+import os
 
 router = APIRouter()
 
@@ -102,41 +103,110 @@ async def start_interview(
         "duration_minutes": duration_minutes,
         "started_at": session["start_time"],
     }
+import asyncio, base64, json, re
+# from groq import Groq
+# from fastapi.responses import StreamingResponse
+
+# ── Semantic flush config ────────────────────────────────────────────────────
+FLUSH_PATTERN = re.compile(r'(?<=[.?!;])\s+|(?<=,)\s+(?=\w{4,})')
+MIN_CHUNK_CHARS = 30        # don't TTS tiny fragments
+MAX_CHUNK_CHARS = 200       # force-flush if buffer gets too long
+
+
+async def _tts_chunk_to_b64(client: Groq, text: str) -> str:
+    """Run Groq TTS synchronously in a thread, return base64 WAV string."""
+    def _call():
+        resp = client.audio.speech.create(
+            model="canopylabs/orpheus-v1-english",
+            voice="troy",
+            input=text.strip(),
+            response_format="wav",
+        )
+        return b"".join(resp.iter_bytes())
+
+    wav_bytes = await asyncio.get_event_loop().run_in_executor(None, _call)
+    return base64.b64encode(wav_bytes).decode()
+
+
+def _should_flush(buffer: str) -> tuple[bool, str, str]:
+    """
+    Check if buffer has a complete semantic chunk to flush.
+    Returns (should_flush, chunk_to_send, remainder).
+    """
+    if len(buffer) < MIN_CHUNK_CHARS:
+        return False, "", buffer
+
+    # Force-flush if too long regardless of punctuation
+    if len(buffer) >= MAX_CHUNK_CHARS:
+        # Try to cut at last word boundary
+        cut = buffer[:MAX_CHUNK_CHARS].rfind(' ')
+        cut = cut if cut > MIN_CHUNK_CHARS else MAX_CHUNK_CHARS
+        return True, buffer[:cut], buffer[cut:].lstrip()
+
+    # Find the last semantic boundary
+    for m in reversed(list(FLUSH_PATTERN.finditer(buffer))):
+        chunk = buffer[:m.start() + 1].strip()
+        remainder = buffer[m.end():]
+        if len(chunk) >= MIN_CHUNK_CHARS:
+            return True, chunk, remainder
+
+    return False, "", buffer
+
 
 @router.post("/api/v1/interview/chat")
 async def chat_with_interviewer(
     session_id: str,
     user_message: str,
     interview_type: str = "technical",
-    current_user: User = Depends(current_active_user)
+    current_user: User = Depends(current_active_user),
 ):
-    # ── Get time state — reject if session not started ─────────────────
     time_state = get_time_state(session_id)
     profile_data = get_profile_data(session_id)
-    # print("DEBUG time_state:", time_state)
-    # print("DEBUG profile:", profile_data)
 
     if not profile_data or not time_state:
-        raise HTTPException(status_code=400, detail="Session not found or profile missing. Call /start first.")
+        raise HTTPException(status_code=400, detail="Session not found. Call /start first.")
 
     config = {"configurable": {"thread_id": session_id}}
     system_prompt = build_system_prompt(profile_data, interview_type, time_state)
     is_final = time_state["phase"] in ("hard_stop", "expired")
+    groq_client = Groq()                     # uses GROQ_API_KEY from env
 
     async def event_generator():
-        # ── Emit time state immediately so client can update UI ────────
+        # 1. Emit time state immediately
         yield f"event: time\ndata: {json.dumps(time_state)}\n\n"
 
-        # ── If already expired, skip agent entirely ────────────────────
         if time_state["phase"] == "expired":
-            closing = json.dumps({"text": "Time's up — interview has ended."})
-            yield f"event: token\ndata: {closing}\n\n"
+            yield f"event: token\ndata: {json.dumps({'text': 'Time is up — interview has ended.'})}\n\n"
             yield f"event: status\ndata: {json.dumps({'status': 'completed'})}\n\n"
             yield "event: done\ndata: [DONE]\n\n"
             return
 
-        # ── Stream agent response ──────────────────────────────────────
-        full_response = []
+        # 2. Stream LLM + semantic TTS in parallel
+        full_response: list[str] = []
+        tts_buffer = ""
+        pending_tts: asyncio.Task | None = None
+
+        async def flush_tts(text: str):
+            """Kick off a TTS call; yield the audio event when done."""
+            b64 = await _tts_chunk_to_b64(groq_client, text)
+            return b64
+
+        tts_queue: asyncio.Queue[str] = asyncio.Queue()   # queued b64 chunks
+
+        async def tts_worker():
+            """Worker that serialises TTS calls so audio arrives in order."""
+            while True:
+                text = await tts_queue.get()
+                if text is None:           # sentinel
+                    break
+                b64 = await flush_tts(text)
+                # We yield via a shared list; see collector below
+                audio_chunks.append(b64)
+                tts_queue.task_done()
+
+        audio_chunks: list[str] = []       # filled by worker, drained below
+        worker = asyncio.create_task(tts_worker())
+
         async for chunk, metadata in interview_agent.astream(
             {
                 "messages": [
@@ -147,30 +217,51 @@ async def chat_with_interviewer(
             config=config,
             stream_mode="messages",
         ):
-            if hasattr(chunk, "content") and isinstance(chunk.content, str):
-                if chunk.content:
-                    full_response.append(chunk.content)
-                    yield f"event: token\ndata: {chunk.content}\n\n"
+            if hasattr(chunk, "content") and isinstance(chunk.content, str) and chunk.content:
+                token = chunk.content
+                full_response.append(token)
+                tts_buffer += token
 
+                # Always stream the text token immediately
+                yield f"event: token\ndata: {json.dumps({'text': token})}\n\n"
+
+                # Check semantic boundary
+                should, chunk_text, tts_buffer = _should_flush(tts_buffer)
+                if should:
+                    await tts_queue.put(chunk_text)
+
+                # Drain any ready audio chunks
+                while audio_chunks:
+                    b64 = audio_chunks.pop(0)
+                    yield f"event: audio\ndata: {json.dumps({'audio': b64, 'format': 'wav'})}\n\n"
+
+        # Flush remaining buffer
+        if tts_buffer.strip():
+            await tts_queue.put(tts_buffer.strip())
+
+        # Signal worker to stop and wait
+        await tts_queue.put(None)
+        await worker
+
+        # Drain remaining audio
+        while audio_chunks:
+            b64 = audio_chunks.pop(0)
+            yield f"event: audio\ndata: {json.dumps({'audio': b64, 'format': 'wav'})}\n\n"
+
+        # 3. Status + done
         full_text = "".join(full_response)
-
-        # ── Detect natural close ───────────────────────────────────────
         closing_phrases = ["that's all the time", "wraps up", "thank you for your time"]
         naturally_closed = any(p in full_text.lower() for p in closing_phrases)
         just_ended = is_final or naturally_closed
-
         status = "completed" if just_ended else "ongoing"
+
         yield f"event: status\ndata: {json.dumps({'status': status, **time_state})}\n\n"
         yield "event: done\ndata: [DONE]\n\n"
 
-        # ── Auto eval when interview ends ──────────────────────────────
         if just_ended:
             try:
                 final_state = await interview_agent.aget_state(config)
                 messages = final_state.values.get("messages", [])
-                print(messages)
-                # evaluation = await evaluate_interview(messages, interview_type)
-                # yield f"event: eval\ndata: {json.dumps(evaluation)}\n\n"
                 end_session(session_id)
             except Exception as e:
                 yield f"event: eval_error\ndata: {json.dumps({'error': str(e)})}\n\n"
