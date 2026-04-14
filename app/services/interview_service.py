@@ -198,9 +198,9 @@ def build_system_prompt(
 
 # ── Agent factory ──────────────────────────────────────────────────────────
 def create_interview_agent(interview_type: InterviewType = "technical"):
-    llm = init_chat_model("gpt-4o", model_provider="openai", temperature=0.7, api_key=settings.OPENAI_API_KEY,streaming=True)
+    llm = init_chat_model("llama-3.3-70b-versatile", model_provider="groq", temperature=0.7, api_key=settings.GROQ_API_KEY,streaming=True)
     memory = MemorySaver()
-
+    #model="llama-3.3-70b-versatile",
     # system_prompt = build_system_prompt(interview_type)
 
     agent = create_react_agent(

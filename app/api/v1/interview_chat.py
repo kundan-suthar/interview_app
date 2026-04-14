@@ -21,6 +21,9 @@ from app.db.database import SessionDep
 from sqlalchemy import select
 from groq import Groq
 import os
+from openai import OpenAI
+import asyncio, base64, json, re
+
 
 router = APIRouter()
 
@@ -57,7 +60,7 @@ async def start_interview(
     )
 
     interview_type = "technical"
-    duration_minutes = 60
+    duration_minutes = 2
     session_id = str(uuid.uuid4())
     profile = result.scalar_one_or_none()
 
@@ -103,7 +106,6 @@ async def start_interview(
         "duration_minutes": duration_minutes,
         "started_at": session["start_time"],
     }
-import asyncio, base64, json, re
 # from groq import Groq
 # from fastapi.responses import StreamingResponse
 
@@ -113,16 +115,31 @@ MIN_CHUNK_CHARS = 30        # don't TTS tiny fragments
 MAX_CHUNK_CHARS = 200       # force-flush if buffer gets too long
 
 
-async def _tts_chunk_to_b64(client: Groq, text: str) -> str:
+async def _tts_chunk_to_b64(client: OpenAI, text: str) -> str:
     """Run Groq TTS synchronously in a thread, return base64 WAV string."""
     def _call():
-        resp = client.audio.speech.create(
-            model="canopylabs/orpheus-v1-english",
-            voice="troy",
+        # resp = client.audio.speech.create(
+        #     model="canopylabs/orpheus-v1-english",
+        #     voice="troy",
+        #     input=text.strip(),
+        #     response_format="wav",
+        # )
+        with client.audio.speech.with_streaming_response.create(
+            model="gpt-4o-mini-tts",
+            voice="onyx",
             input=text.strip(),
+            instructions=(
+                "Speak in a deep, calm, and authoritative tone like a senior engineer or engineering manager. "
+                "Be measured and precise but speak at a natural conversational pace — not slow, not rushed. "
+                "Think of the rhythm of a confident person in a meeting who speaks clearly without dragging words. "
+                "Pause briefly only at question marks and full stops, not between every clause. "
+                "Sound evaluative but not cold — professional throughout."
+            ),
+            speed=1.25,
             response_format="wav",
-        )
-        return b"".join(resp.iter_bytes())
+        ) as resp:
+            # iter_bytes() is on resp, not on the context manager
+            return b"".join(resp.iter_bytes(chunk_size=4096))
 
     wav_bytes = await asyncio.get_event_loop().run_in_executor(None, _call)
     return base64.b64encode(wav_bytes).decode()
@@ -170,15 +187,23 @@ async def chat_with_interviewer(
     system_prompt = build_system_prompt(profile_data, interview_type, time_state)
     is_final = time_state["phase"] in ("hard_stop", "expired")
     groq_client = Groq()                     # uses GROQ_API_KEY from env
-
+    open_client = OpenAI()
     async def event_generator():
         # 1. Emit time state immediately
         yield f"event: time\ndata: {json.dumps(time_state)}\n\n"
 
-        if time_state["phase"] == "expired":
+        if time_state["phase"] == "expired" or time_state["phase"] == "hard_stop":
             yield f"event: token\ndata: {json.dumps({'text': 'Time is up — interview has ended.'})}\n\n"
             yield f"event: status\ndata: {json.dumps({'status': 'completed'})}\n\n"
             yield "event: done\ndata: [DONE]\n\n"
+            try:
+                final_state = await interview_agent.aget_state(config)
+                messages = final_state.values.get("messages", [])
+                print("messages------------------------")
+                print(messages)
+                end_session(session_id)
+            except Exception as e:
+                yield f"event: eval_error\ndata: {json.dumps({'error': str(e)})}\n\n"
             return
 
         # 2. Stream LLM + semantic TTS in parallel
@@ -186,26 +211,27 @@ async def chat_with_interviewer(
         tts_buffer = ""
         pending_tts: asyncio.Task | None = None
 
-        async def flush_tts(text: str):
-            """Kick off a TTS call; yield the audio event when done."""
-            b64 = await _tts_chunk_to_b64(groq_client, text)
-            return b64
+        # async def flush_tts(text: str):
+        #     """Kick off a TTS call; yield the audio event when done."""
+        #     # b64 = await _tts_chunk_to_b64(groq_client, text)
+        #     b64 = await _tts_chunk_to_b64(open_client, text)
+        #     return b64
 
-        tts_queue: asyncio.Queue[str] = asyncio.Queue()   # queued b64 chunks
+        # tts_queue: asyncio.Queue[str] = asyncio.Queue()   # queued b64 chunks
 
-        async def tts_worker():
-            """Worker that serialises TTS calls so audio arrives in order."""
-            while True:
-                text = await tts_queue.get()
-                if text is None:           # sentinel
-                    break
-                b64 = await flush_tts(text)
-                # We yield via a shared list; see collector below
-                audio_chunks.append(b64)
-                tts_queue.task_done()
+        # async def tts_worker():
+        #     """Worker that serialises TTS calls so audio arrives in order."""
+        #     while True:
+        #         text = await tts_queue.get()
+        #         if text is None:           # sentinel
+        #             break
+        #         b64 = await flush_tts(text)
+        #         # We yield via a shared list; see collector below
+        #         audio_chunks.append(b64)
+        #         tts_queue.task_done()
 
-        audio_chunks: list[str] = []       # filled by worker, drained below
-        worker = asyncio.create_task(tts_worker())
+        # audio_chunks: list[str] = []       # filled by worker, drained below
+        # worker = asyncio.create_task(tts_worker())
 
         async for chunk, metadata in interview_agent.astream(
             {
@@ -226,27 +252,27 @@ async def chat_with_interviewer(
                 yield f"event: token\ndata: {json.dumps({'text': token})}\n\n"
 
                 # Check semantic boundary
-                should, chunk_text, tts_buffer = _should_flush(tts_buffer)
-                if should:
-                    await tts_queue.put(chunk_text)
+                # should, chunk_text, tts_buffer = _should_flush(tts_buffer)
+                # if should:
+                #     await tts_queue.put(chunk_text)
 
                 # Drain any ready audio chunks
-                while audio_chunks:
-                    b64 = audio_chunks.pop(0)
-                    yield f"event: audio\ndata: {json.dumps({'audio': b64, 'format': 'wav'})}\n\n"
+                # while audio_chunks:
+                #     b64 = audio_chunks.pop(0)
+                #     yield f"event: audio\ndata: {json.dumps({'audio': b64, 'format': 'wav'})}\n\n"
 
         # Flush remaining buffer
-        if tts_buffer.strip():
-            await tts_queue.put(tts_buffer.strip())
+        # if tts_buffer.strip():
+        #     await tts_queue.put(tts_buffer.strip())
 
-        # Signal worker to stop and wait
-        await tts_queue.put(None)
-        await worker
+        # # Signal worker to stop and wait
+        # await tts_queue.put(None)
+        # await worker
 
-        # Drain remaining audio
-        while audio_chunks:
-            b64 = audio_chunks.pop(0)
-            yield f"event: audio\ndata: {json.dumps({'audio': b64, 'format': 'wav'})}\n\n"
+        # # Drain remaining audio
+        # while audio_chunks:
+        #     b64 = audio_chunks.pop(0)
+        #     yield f"event: audio\ndata: {json.dumps({'audio': b64, 'format': 'wav'})}\n\n"
 
         # 3. Status + done
         full_text = "".join(full_response)
@@ -262,6 +288,8 @@ async def chat_with_interviewer(
             try:
                 final_state = await interview_agent.aget_state(config)
                 messages = final_state.values.get("messages", [])
+                print("messages------------------------")
+                print(messages)
                 end_session(session_id)
             except Exception as e:
                 yield f"event: eval_error\ndata: {json.dumps({'error': str(e)})}\n\n"

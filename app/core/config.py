@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str
     LANGCHAIN_API_KEY: str
     LANGCHAIN_PROJECT: str
+    GROQ_API_KEY: str
     
     MAIL_USERNAME: str
     MAIL_PASSWORD: str

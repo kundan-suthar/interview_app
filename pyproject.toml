@@ -13,6 +13,7 @@ dependencies = [
     "langchain>=1.2.13",
     "langchain-groq>=1.1.2",
     "langchain-openai>=1.1.11",
+    "openai>=2.29.0",
     "psycopg2>=2.9.11",
     "pyjwt>=2.12.1",
     "pymupdf>=1.27.2.2",
