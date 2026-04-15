@@ -18,10 +18,6 @@ async def start_session( db:SessionDep,mock_interview_id:int, session_id: str, d
     )
     profile = result.scalar_one_or_none()
     mock_interview = result2.scalar_one_or_none()
-    print("DEBUG profile in start_session:", profile)
-    print(profile.id)
-    print(profile.full_name)
-    print(profile.experience)
     if not profile and not mock_interview:
         raise ValueError(f"No profile analysis and mock interview found for mock_interview_id={mock_interview_id}")
 

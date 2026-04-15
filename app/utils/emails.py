@@ -21,5 +21,3 @@ async def send_verification_email(email: str, link: str):
 
     fm = FastMail(conf)
     await fm.send_message(message)
-    print("mail sent")
-    print("-------------------------------------")

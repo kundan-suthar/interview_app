@@ -16,7 +16,6 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             return
 
         refresh_token = create_refresh_token(str(user.id))  # ← just sign, no DB
-        print(refresh_token)
         response.set_cookie(
             key="refresh_token",
             value=refresh_token,
@@ -36,7 +35,6 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         
         # Send email here
         await send_verification_email(user.email, verification_link)
-        print(f"Verification link for {user.email}: {verification_link}")
 
     async def on_after_register(self, user: User, request: Request = None,):
         await self.request_verify(user)

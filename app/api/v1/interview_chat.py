@@ -1,5 +1,6 @@
 # app/api/routes/interview.py
 
+from app.models.interview_session import InterviewSession
 import json
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Form
 from fastapi.responses import StreamingResponse
@@ -18,12 +19,14 @@ from datetime import datetime
 from app.utils.extract_pdf import extract_text_from_upload
 from app.services.interview_analyze import analyze_resume_function
 from app.db.database import SessionDep
-from sqlalchemy import select
+from sqlalchemy import select, func
+from sqlalchemy.dialects.postgresql import insert
 from groq import Groq
 import os
 from openai import OpenAI
 import asyncio, base64, json, re
-
+from langchain_core.messages import HumanMessage, AIMessage
+from app.utils.serialize import serialize_messages
 
 router = APIRouter()
 
@@ -39,8 +42,6 @@ async def analyze_resume(
         "text": texts,
         "job_description": job_description
     })  
-    print("-----------------------")
-    print("res",res)
     return res
     
 @router.post("/api/v1/interview/start")
@@ -60,7 +61,7 @@ async def start_interview(
     )
 
     interview_type = "technical"
-    duration_minutes = 2
+    duration_minutes = 0.5
     session_id = str(uuid.uuid4())
     profile = result.scalar_one_or_none()
 
@@ -78,7 +79,6 @@ async def start_interview(
     db.add(mock_interview)
     await db.commit()
     await db.refresh(mock_interview)
-    print("mock_interview",mock_interview.id)   
     if mock_interview.id:
         resume_analysis = ProfileAnalysis(
             mock_interview_id=mock_interview.id,
@@ -174,6 +174,7 @@ def _should_flush(buffer: str) -> tuple[bool, str, str]:
 async def chat_with_interviewer(
     session_id: str,
     user_message: str,
+    db: SessionDep,
     interview_type: str = "technical",
     current_user: User = Depends(current_active_user),
 ):
@@ -196,14 +197,23 @@ async def chat_with_interviewer(
             yield f"event: token\ndata: {json.dumps({'text': 'Time is up — interview has ended.'})}\n\n"
             yield f"event: status\ndata: {json.dumps({'status': 'completed'})}\n\n"
             yield "event: done\ndata: [DONE]\n\n"
+            # try:
+            #     final_state = await interview_agent.aget_state(config)
+            #     messages = final_state.values.get("messages", [])
+            #     print("messages------------------------")
+            #     print(messages)
+            #     end_session(session_id)
+            # except Exception as e:
+            #     yield f"event: eval_error\ndata: {json.dumps({'error': str(e)})}\n\n"
+            # return
             try:
-                final_state = await interview_agent.aget_state(config)
-                messages = final_state.values.get("messages", [])
-                print("messages------------------------")
-                print(messages)
-                end_session(session_id)
+                print("control reached here 1")
+                import traceback; traceback.print_exc()  
+                await persist_interview_session(session_id, config, db, current_user, interview_type)
             except Exception as e:
                 yield f"event: eval_error\ndata: {json.dumps({'error': str(e)})}\n\n"
+            finally:
+                end_session(session_id)
             return
 
         # 2. Stream LLM + semantic TTS in parallel
@@ -285,14 +295,22 @@ async def chat_with_interviewer(
         yield "event: done\ndata: [DONE]\n\n"
 
         if just_ended:
+            # try:
+            #     final_state = await interview_agent.aget_state(config)
+            #     messages = final_state.values.get("messages", [])
+            #     print("messages------------------------")
+            #     print(messages)
+            #     end_session(session_id)
+            # except Exception as e:
+            #     yield f"event: eval_error\ndata: {json.dumps({'error': str(e)})}\n\n"
             try:
-                final_state = await interview_agent.aget_state(config)
-                messages = final_state.values.get("messages", [])
-                print("messages------------------------")
-                print(messages)
-                end_session(session_id)
+                print("control reached here 2")
+                await persist_interview_session(session_id, config, db, current_user, interview_type)
             except Exception as e:
+                import traceback; traceback.print_exc()  
                 yield f"event: eval_error\ndata: {json.dumps({'error': str(e)})}\n\n"
+            finally:
+                end_session(session_id)
 
     return StreamingResponse(
         event_generator(),
@@ -308,3 +326,40 @@ async def get_time(session_id: str):
     if not time_state:
         raise HTTPException(status_code=404, detail="Session not found")
     return time_state
+
+
+
+async def persist_interview_session(
+    session_id: str,
+    config: dict,
+    db: SessionDep,
+    current_user: User,
+    interview_type: str,
+    status: str = "completed",
+):
+    """Extract final state from LangGraph and write to SQL DB."""
+   
+    final_state = await interview_agent.aget_state(config)
+    messages = final_state.values.get("messages", [])
+    serialized = serialize_messages(messages)
+
+    stmt = (
+        insert(InterviewSession)
+        .values(
+            session_id=session_id,
+            user_id=current_user.id,
+            interview_type=interview_type,
+            messages=serialized,
+            status=status,
+        )
+        .on_conflict_do_update(
+            index_elements=["session_id"],
+            set_={
+                "messages": serialized,
+                "status": status,
+                "completed_at": func.now(),
+            },
+        )
+    )
+    await db.execute(stmt)
+    await db.commit()

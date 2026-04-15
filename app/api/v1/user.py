@@ -11,7 +11,6 @@ router = APIRouter(tags=['profile'])
 
 @router.get("/api/v1/users/me")
 async def get_user(db:SessionDep,current_user: User = Depends(current_active_user)):
-    print("cuurent user id ",current_user.id)
     query = select(User.full_name, User.email).where(User.id == current_user.id)
     result = await db.execute(query)
     data = result.first()

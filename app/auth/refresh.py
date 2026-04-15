@@ -13,7 +13,6 @@ async def refresh_access_token(
     user_manager: UserManager = Depends(get_user_manager),
 ):
     refresh_token = request.cookies.get("refresh_token")
-    print("refresh token referehhhh filee----", refresh_token) 
     if not refresh_token:
         raise HTTPException(status_code=401, detail="No refresh token")
 

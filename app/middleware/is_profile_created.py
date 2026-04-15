@@ -13,7 +13,6 @@ async def check_profile_completed(
     Dependency to check if the current active user has completed their profile.
     If not, raises a 403 Forbidden error.
     """
-    print("check profile completed", user.id)
     stmt = select(UserProfile.isProfileCreated).where(UserProfile.user_id == user.id)
     result = await db.execute(stmt)
     is_profile_created = result.scalar_one_or_none()
