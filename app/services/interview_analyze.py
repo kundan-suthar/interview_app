@@ -5,13 +5,13 @@ from datetime import date
 from langchain_groq import ChatGroq
 from dotenv import load_dotenv
 load_dotenv()
-model = init_chat_model("gpt-4.1")
-# model = ChatGroq(
-#     model="meta-llama/llama-4-scout-17b-16e-instruct",  
-#     # model="llama-3.3-70b-versatile",
-#     temperature=0,
-#     api_key=os.getenv("GROQ_API_KEY")
-# )
+# model = init_chat_model("gpt-4.1")
+model = ChatGroq(
+    # model="meta-llama/llama-4-scout-17b-16e-instruct",  
+    model="llama-3.3-70b-versatile",
+    temperature=0,
+    api_key=os.getenv("GROQ_API_KEY")
+)
 class ProfileAnalysis(BaseModel):
     # --- Candidate Info ---
     full_name: str = Field(

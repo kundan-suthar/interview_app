@@ -1,5 +1,8 @@
 # app/api/routes/interview.py
 
+from sqlalchemy.orm import selectinload
+from app.db.database import async_session_maker
+from app.services.interview_conclude import InterviewConclusionService
 from app.models.interview_session import InterviewSession
 import json
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Form
@@ -27,6 +30,7 @@ from openai import OpenAI
 import asyncio, base64, json, re
 from langchain_core.messages import HumanMessage, AIMessage
 from app.utils.serialize import serialize_messages
+from fastapi import BackgroundTasks
 
 router = APIRouter()
 
@@ -61,7 +65,7 @@ async def start_interview(
     )
 
     interview_type = "technical"
-    duration_minutes = 0.5
+    duration_minutes = 1
     session_id = str(uuid.uuid4())
     profile = result.scalar_one_or_none()
 
@@ -175,6 +179,7 @@ async def chat_with_interviewer(
     session_id: str,
     user_message: str,
     db: SessionDep,
+    background_tasks: BackgroundTasks,
     interview_type: str = "technical",
     current_user: User = Depends(current_active_user),
 ):
@@ -209,7 +214,23 @@ async def chat_with_interviewer(
             try:
                 print("control reached here 1")
                 import traceback; traceback.print_exc()  
-                await persist_interview_session(session_id, config, db, current_user, interview_type)
+                session = await persist_interview_session(session_id, config, db, current_user, interview_type)
+                print(f"session type: {type(session)}")
+                print(f"session id: {session.session_id if session else 'None'}")
+                
+                # Query mock interview
+                result = await db.execute(
+                    select(MockInterview)
+                    .where(MockInterview.thread_id == session_id)
+                    .options(selectinload(MockInterview.resume_analysis))  # ✅ eager load
+                )
+                mock_interview = result.scalar_one_or_none()
+                print("session------------------------")
+                print(session)
+                
+                if session:
+                    print("adding to background job")
+                    background_tasks.add_task(generate_conclusion_safe, session, mock_interview)
             except Exception as e:
                 yield f"event: eval_error\ndata: {json.dumps({'error': str(e)})}\n\n"
             finally:
@@ -305,7 +326,19 @@ async def chat_with_interviewer(
             #     yield f"event: eval_error\ndata: {json.dumps({'error': str(e)})}\n\n"
             try:
                 print("control reached here 2")
-                await persist_interview_session(session_id, config, db, current_user, interview_type)
+                session = await persist_interview_session(session_id, config, db, current_user, interview_type)
+                print(f"session type: {type(session)}")
+                print(f"session id: {session.session_id if session else 'None'}")
+                
+                # Query mock interview
+                result = await db.execute(select(MockInterview).where(MockInterview.thread_id == session_id))
+                mock_interview = result.scalar_one_or_none()
+                print("session------------------------")
+                print(session)
+                
+                if session:
+                    print(f"Creating async task for session {session.session_id}")
+                    background_tasks.add_task(generate_conclusion_safe, session, mock_interview)
             except Exception as e:
                 import traceback; traceback.print_exc()  
                 yield f"event: eval_error\ndata: {json.dumps({'error': str(e)})}\n\n"
@@ -342,24 +375,60 @@ async def persist_interview_session(
     final_state = await interview_agent.aget_state(config)
     messages = final_state.values.get("messages", [])
     serialized = serialize_messages(messages)
-
-    stmt = (
-        insert(InterviewSession)
-        .values(
-            session_id=session_id,
-            user_id=current_user.id,
-            interview_type=interview_type,
-            messages=serialized,
-            status=status,
+    try:
+        stmt = (
+            insert(InterviewSession)
+            .values(
+                session_id=session_id,
+                user_id=current_user.id,
+                interview_type=interview_type,
+                messages=serialized,
+                status=status,
+            )
+            .on_conflict_do_update(
+                index_elements=["session_id"],
+                set_={
+                    "messages": serialized,
+                    "status": status,
+                    "completed_at": func.now(),
+                },
+            )
+            .returning(InterviewSession) 
         )
-        .on_conflict_do_update(
-            index_elements=["session_id"],
-            set_={
-                "messages": serialized,
-                "status": status,
-                "completed_at": func.now(),
-            },
+        res = await db.execute(stmt)
+        await db.commit()
+        # Fetch the session separately
+        result = await db.execute(
+            select(InterviewSession).where(InterviewSession.session_id == session_id)
         )
-    )
-    await db.execute(stmt)
-    await db.commit()
+        session = result.scalar_one_or_none()
+        
+        print("session", session)
+        
+        if session is None:
+            raise ValueError(f"Failed to retrieve session after upsert: {session_id}")
+        
+        # No need to refresh since we just fetched it
+        return session
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        raise e
+        
+async def generate_conclusion_safe(session: InterviewSession, mock_interview: MockInterview):
+    """
+    Wrapper that creates its own DB session.
+    Never raises — logs errors silently so it never crashes the main flow.
+    """
+    try:
+        async with async_session_maker() as db:  # fresh session
+            conclusion_service = InterviewConclusionService()
+            print("conclusion_service",conclusion_service)
+            await conclusion_service.generate_and_save(
+                session=session,
+                mock_interview=mock_interview,
+                db=db
+            )
+    except Exception as e:
+        # Log but never propagate — this is fire-and-forget
+        print(f"[ConclusionService] Failed for session {session.session_id}: {e}")
+        import traceback; traceback.print_exc()

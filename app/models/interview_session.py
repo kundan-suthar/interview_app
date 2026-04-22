@@ -9,12 +9,12 @@ from uuid import UUID as PyUUID
 from app.models.user import Base
 
  
-class InterviewSession(Base):
+class InterviewSession(Base): 
     __tablename__ = "interview_sessions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    user_id: Mapped[PyUUID] = mapped_column(ForeignKey("user.id"), unique=True)
+    user_id: Mapped[PyUUID] = mapped_column(ForeignKey("user.id"))
     interview_type: Mapped[str] = mapped_column(String(50), nullable=True)
     messages: Mapped[dict] = mapped_column(JSON, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="completed")  # completed | abandoned
