@@ -19,7 +19,7 @@ class ProfileAnalysis(BaseModel):
     )
     experience: float = Field(
         description=(
-            "Total years of professional work experience calculated from the work history section. "
+            "Total years of professional work experience calculated from the work history section.  Return 0.0 if not found."
             "Sum all roles' durations. If currently employed, calculate till today's date (provided in prompt). "
             "Round to the nearest 0.5. Examples: 2.0, 2.5, 3.0, 3.5. Never return values like 2.1 or 3.8."
         )

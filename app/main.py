@@ -1,3 +1,4 @@
+from app.api.v1 import dashboard_data
 from app.api.v1 import interview_conclusion
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -58,3 +59,4 @@ app.include_router(profile.router, tags=["profile"])
 # app.include_router(interview_chat.router, tags=["interview_chat"], dependencies=[Depends(check_profile_completed)])
 app.include_router(interview_chat.router, tags=["interview_chat"])
 app.include_router(interview_conclusion.router, tags=["interview_conclusion"])
+app.include_router(dashboard_data.router, tags=["dashboard"])

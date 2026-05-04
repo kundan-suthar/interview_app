@@ -1,5 +1,6 @@
 # app/api/routes/interview.py
 
+from sqlalchemy import update
 from sqlalchemy.orm import selectinload
 from app.db.database import async_session_maker
 from app.services.interview_conclude import InterviewConclusionService
@@ -230,7 +231,8 @@ async def chat_with_interviewer(
                 
                 if session:
                     print("adding to background job")
-                    background_tasks.add_task(generate_conclusion_safe, session, mock_interview)
+                    asyncio.create_task(generate_conclusion_safe(session, mock_interview))
+                    # background_tasks.add_task(generate_conclusion_safe, session, mock_interview)
             except Exception as e:
                 yield f"event: eval_error\ndata: {json.dumps({'error': str(e)})}\n\n"
             finally:
@@ -338,7 +340,8 @@ async def chat_with_interviewer(
                 
                 if session:
                     print(f"Creating async task for session {session.session_id}")
-                    background_tasks.add_task(generate_conclusion_safe, session, mock_interview)
+                    asyncio.create_task(generate_conclusion_safe(session, mock_interview))
+                    # background_tasks.add_task(generate_conclusion_safe, session, mock_interview)
             except Exception as e:
                 import traceback; traceback.print_exc()  
                 yield f"event: eval_error\ndata: {json.dumps({'error': str(e)})}\n\n"
@@ -395,7 +398,13 @@ async def persist_interview_session(
             )
             .returning(InterviewSession) 
         )
+        stmt2 = (
+                update(MockInterview)
+                .where(MockInterview.thread_id == session_id)
+                .values(status="completed")
+            )
         res = await db.execute(stmt)
+        await db.execute(stmt2)
         await db.commit()
         # Fetch the session separately
         result = await db.execute(

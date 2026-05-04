@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from app.db.database import SessionDep
 
 router = APIRouter(tags=['conclusion'])
-@router.get("/interview/{session_id}/conclusion")
+@router.get("/api/interview/conclusion/{session_id}")
 async def get_conclusion(session_id: str, db: SessionDep):
 
     # Single join query to get everything

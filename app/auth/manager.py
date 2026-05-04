@@ -14,7 +14,16 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     async def on_after_login(self, user: User, request=None, response=None):
         if response is None:
             return
-
+        is_verified = user.is_verified
+        response.set_cookie(
+            key="is_verified",
+            value=is_verified,
+            httponly=True,
+            secure=False,
+            samesite="lax",
+            max_age=60 * 60 * 24 * 7,
+            path="/",
+        )
         refresh_token = create_refresh_token(str(user.id))  # ← just sign, no DB
         response.set_cookie(
             key="refresh_token",
