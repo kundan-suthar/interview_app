@@ -9,31 +9,53 @@ from app.schemas.user_profile import UserProfileCreate, UserProfileResponse
 
 router = APIRouter(tags=['profile'])
 
-@router.get("/profile")
+@router.get("/api/v1/profile")
 async def get_profile(db:SessionDep,current_user: User = Depends(current_active_user)):
-    all_profiles =  await db.execute(select(UserProfile))
-    return all_profiles.scalars().all()
+    query = select(UserProfile.bio, UserProfile.headline, UserProfile.skills).where(UserProfile.user_id == current_user.id)
+    result = await db.execute(query)
+    data = result.first()
+    if data is None:
+        return {
+            "bio": "",
+            "headline": "",
+            "skills": "",
+            "isProfileCreated": False
+        }
+
+    return {
+        "bio": data.bio,
+        "headline": data.headline,
+        "skills": data.skills,
+        "isProfileCreated": True
+    }
 
 
-@router.post("/profile", response_model=UserProfileResponse)
-async def create_profile(
+@router.post("/api/v1/profile", response_model=UserProfileResponse)
+async def create_or_update_profile(
     db: SessionDep, 
-    profile_in: UserProfileCreate, # Renamed to avoid conflict
+    profile_in: UserProfileCreate,
     current_user: User = Depends(current_active_user)
 ):
-    # 1. Check if it exists
-    result = await db.execute(select(UserProfile).where(UserProfile.user_id == current_user.id))
-    existing_profile = result.scalar_one_or_none()
+    result = await db.execute(
+        select(UserProfile).where(UserProfile.user_id == current_user.id)
+    )
+    profile = result.scalar_one_or_none()
 
-    if not existing_profile:
-        # 2. Create new using the renamed 'profile_in'
-        # Note: .model_dump() is the Pydantic v2 version of .dict()
-        new_profile = UserProfile(**profile_in.model_dump(), user_id=current_user.id)
-        db.add(new_profile)
-        await db.commit()
-        await db.refresh(new_profile)
-        return new_profile
+    if profile:
+        # UPDATE
+        for key, value in profile_in.model_dump().items():
+            setattr(profile, key, value)
+        profile.isProfileCreated = True
+    else:
+        # CREATE
+        profile = UserProfile(
+            **profile_in.model_dump(),
+            user_id=current_user.id,
+            isProfileCreated=True
+        )
+        db.add(profile)
 
-    # 3. If it already exists, you can return it or update it
-    return existing_profile
+    await db.commit()
+    await db.refresh(profile)
 
+    return profile

@@ -7,3 +7,5 @@ class Base(DeclarativeBase):
 
 class User(Base, SQLAlchemyBaseUserTableUUID):
    full_name: Mapped[str] = mapped_column(nullable=True)
+
+
