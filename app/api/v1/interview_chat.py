@@ -42,6 +42,7 @@ async def analyze_resume(
     current_user: User = Depends(current_active_user),
 ):
     """Call this once before the first message to register the timer."""
+    
     texts = await extract_text_from_upload(resume)
     res = await analyze_resume_function({
         "text": texts,

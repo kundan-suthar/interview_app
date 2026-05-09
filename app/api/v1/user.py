@@ -3,7 +3,6 @@ from app.db.database import SessionDep
 from app.models.user import User
 from sqlalchemy import select
 from app.auth.users import current_active_user
-from app.models.user import User
 from app.schemas.user_profile import UserProfileCreate, UserProfileResponse
 
 
@@ -16,5 +15,9 @@ async def get_user(db:SessionDep,current_user: User = Depends(current_active_use
     data = result.first()
     return {
         "full_name": data.full_name,
-        "email": data.email
+        "email": data.email,
+        "is_verified":current_user.is_verified
+        # "is_verified": False
     }
+
+
