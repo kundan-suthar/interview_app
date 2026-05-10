@@ -19,8 +19,8 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             key="is_verified",
             value=is_verified,
             httponly=True,
-            secure=False,
-            samesite="lax",
+            secure=True,
+            samesite="none",
             max_age=60 * 60 * 24 * 7,
             path="/",
         )
@@ -40,8 +40,8 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         token: str, 
         request: Request = None,
     ):
-        verification_link = f"http://localhost:3000/verifyEmail?token={token}"
-        
+        frontend_url = settings.FRONTEND_URL  # Add this to your config
+        verification_link = f"{frontend_url}/verifyEmail?token={token}"
         # Send email here
         await send_verification_email(user.email, verification_link)
 
