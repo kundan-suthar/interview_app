@@ -46,19 +46,29 @@ def build_prompt(transcript: str, job_title: str) -> str:
 
          Interview Transcript:
         {formatted}
-        Analyze the above and return the structured profile analysis.
-         Evaluate the candidate and return a JSON object with EXACTLY these fields:
-        - performance_summary: string (3-4 sentence summary)
-        - technical_depth: float between 0-5
-        - communication: float between 0-5
-        - confidence: float between 0-5
-        - hirability_score: float between 0-10
-        - key_strengths: array of 3-5 strings
-        - areas_to_improve: array of 3-5 strings
-        - actionable_items: array of 3-5 strings (concrete next steps for candidate)
+        Analyze the candidate's performance thoroughly.
+        Provide an honest evaluation of:
+        - technical competency
+        - communication
+        - confidence
+        - hirability
+        - strengths
+        - weaknesses
+        - actionable improvements
 
-        Return ONLY valid JSON, no explanation.
         """
+        # Analyze the above and return the structured profile analysis.
+        #  Evaluate the candidate and return a JSON object with EXACTLY these fields:
+        # - performance_summary: string (3-4 sentence summary)
+        # - technical_depth: float between 0-5
+        # - communication: float between 0-5
+        # - confidence: float between 0-5
+        # - hirability_score: float between 0-10
+        # - key_strengths: array of 3-5 strings
+        # - areas_to_improve: array of 3-5 strings
+        # - actionable_items: array of 3-5 strings (concrete next steps for candidate)
+
+        # Return ONLY valid JSON, no explanation.
 
 # ── Usage ────────────────────────────────────────────────────────────────────
 model_with_struct = model.with_structured_output(InterviewConclusion, include_raw=False)

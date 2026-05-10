@@ -67,7 +67,7 @@ async def start_interview(
     )
 
     interview_type = "technical"
-    duration_minutes = 5
+    duration_minutes = 2
     session_id = str(uuid.uuid4())
     profile = result.scalar_one_or_none()
 
