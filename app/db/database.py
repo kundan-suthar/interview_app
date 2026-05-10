@@ -13,7 +13,11 @@ import os
 # DATABASE_URL = f"postgresql+asyncpg://{settings.DATABASE_USERNAME}:{settings.DATABASE_PASSWORD}@{settings.DATABASE_HOSTNAME}:{settings.DATABASE_PORT}/{settings.DATABASE_NAME}"
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-engine = create_async_engine(DATABASE_URL)
+engine = create_async_engine(DATABASE_URL, pool_size=20,  # Adjust based on your needs
+    max_overflow=10,
+    pool_pre_ping=True,  # Critical: Check connection before using
+    pool_recycle=3600,   # Recycle connections every hour
+    echo=False,)
 
 async_session_maker = async_sessionmaker(engine, expire_on_commit=False)
 
