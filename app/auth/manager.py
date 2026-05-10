@@ -29,8 +29,8 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             key="refresh_token",
             value=refresh_token,
             httponly=True,
-            secure=False,
-            samesite="lax",
+            secure=True,
+            samesite="none",
             max_age=60 * 60 * 24 * 7,
             path="/",
         )
