@@ -29,7 +29,7 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # your frontend URL
+    allow_origins=["http://localhost:3000","https://interview-app-frontend-ten.vercel.app"],  # your frontend URL
     allow_credentials=True,  # ← this must be True
     allow_methods=["*"],
     allow_headers=["*"],
