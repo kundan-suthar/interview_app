@@ -10,7 +10,7 @@ from app.api.v1 import profile
 from app.api.v1 import interview_chat
 from app.api.v1 import user
 from app.api.v1 import is_verified
-from app.auth import refresh,logout
+from app.auth import refresh,logout,login
 from app.middleware.is_profile_created import check_profile_completed
 from fastapi import Depends
 
@@ -62,3 +62,4 @@ app.include_router(interview_chat.router, tags=["interview_chat"])
 app.include_router(interview_conclusion.router, tags=["interview_conclusion"])
 app.include_router(dashboard_data.router, tags=["dashboard"])
 app.include_router(is_verified.router, tags=["is_verified"])
+app.include_router(login.router, tags=["custom_login"])

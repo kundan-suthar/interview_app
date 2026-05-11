@@ -1,9 +1,23 @@
+from fastapi import HTTPException
 import jwt 
 from datetime import datetime, timedelta
 from app.core.config import settings
 
 
 REFRESH_TOKEN_EXPIRE_DAYS = 7
+
+
+def create_access_token(user_id: str):
+    
+
+    payload = {
+        "sub": user_id,
+        "exp":  datetime.utcnow() + timedelta(minutes=15),
+        "type": "access"
+    }
+
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+
 
 def create_refresh_token(user_id: str) -> str:
     payload = {

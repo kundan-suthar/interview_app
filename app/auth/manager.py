@@ -25,15 +25,19 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             path="/",
         )
         refresh_token = create_refresh_token(str(user.id))  # ← just sign, no DB
-        response.set_cookie(
-            key="refresh_token",
-            value=refresh_token,
-            httponly=True,
-            secure=True,
-            samesite="none",
-            max_age=60 * 60 * 24 * 7,
-            path="/",
-        )
+        # response.set_cookie(
+        #     key="refresh_token",
+        #     value=refresh_token,
+        #     httponly=True,
+        #     secure=True,
+        #     samesite="none",
+        #     max_age=60 * 60 * 24 * 7,
+        #     path="/",
+        # )
+        return {
+        "refresh_token": refresh_token,
+        "token_type": "bearer"
+         }
     async def on_after_request_verify(
         self,
         user: User,
