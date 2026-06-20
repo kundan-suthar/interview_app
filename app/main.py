@@ -22,9 +22,16 @@ async def lifespan(app: FastAPI):
     
 app = FastAPI(lifespan=lifespan)
 
-@app.get("/health", tags=["health"])
+@app.api_route(
+    "/health",
+    methods=["GET", "HEAD"],
+    tags=["health"]
+)
 async def health_check():
-    return {"status": "ok", "message": "server is running"}
+    return {
+        "status": "ok",
+        "message": "server is running"
+    }
 
 origins = [
     "http://localhost:3000",
