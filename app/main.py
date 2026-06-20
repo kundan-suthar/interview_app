@@ -22,6 +22,10 @@ async def lifespan(app: FastAPI):
     
 app = FastAPI(lifespan=lifespan)
 
+@app.get("/health", tags=["health"])
+async def health_check():
+    return {"status": "ok", "message": "server is running"}
+
 origins = [
     "http://localhost:3000",
     "https://interview-app-frontend-ten.vercel.app",
