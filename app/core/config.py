@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     LANGCHAIN_API_KEY: str
     LANGCHAIN_PROJECT: str
     GROQ_API_KEY: str
+    FRONTEND_URL: str
     
     MAIL_USERNAME: str
     MAIL_PASSWORD: str
